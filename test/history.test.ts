@@ -8,7 +8,7 @@ import {
   stripHistoryImages,
   truncateHistory,
 } from "../src/history.js";
-import type { KiroHistoryEntry, KiroImage, KiroToolResult, KiroToolSpec, KiroToolUse } from "../src/transform.js";
+import type { KiroHistoryEntry, KiroToolResult, KiroToolSpec, KiroToolUse } from "../src/transform.js";
 
 const userEntry = (content: string, toolResults?: KiroToolResult[]): KiroHistoryEntry => ({
   userInputMessage: {
