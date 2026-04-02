@@ -82,6 +82,30 @@ describe("Feature 6: History Management", () => {
         ),
       ).toBeUndefined();
     });
+
+    it("strips leading toolResult entry instead of returning [] (issue #24)", () => {
+      // After truncation, the first remaining entry may be a tool-result turn.
+      // sanitizeHistory must strip it and preserve the rest, not wipe everything.
+      const toolResultEntry = userEntry("results", [{ toolUseId: "tc1", content: [{ text: "ok" }], status: "success" }]);
+      const h = [toolResultEntry, userEntry("next message"), assistantEntry("reply")];
+      const r = sanitizeHistory(h);
+      expect(r).toHaveLength(2);
+      expect(r[0].userInputMessage?.content).toBe("next message");
+    });
+
+    it("strips multiple leading invalid entries before first valid user message", () => {
+      const toolResultEntry = userEntry("results", [{ toolUseId: "tc1", content: [{ text: "ok" }], status: "success" }]);
+      const h = [assistantEntry("stale"), toolResultEntry, userEntry("hello"), assistantEntry("world")];
+      const r = sanitizeHistory(h);
+      expect(r).toHaveLength(2);
+      expect(r[0].userInputMessage?.content).toBe("hello");
+    });
+
+    it("returns [] when all entries are leading invalid (no valid tail)", () => {
+      const toolResultEntry = userEntry("results", [{ toolUseId: "tc1", content: [{ text: "ok" }], status: "success" }]);
+      const h = [assistantEntry("stale"), toolResultEntry];
+      expect(sanitizeHistory(h)).toHaveLength(0);
+    });
   });
 
   describe("injectSyntheticToolCalls", () => {
@@ -120,6 +144,31 @@ describe("Feature 6: History Management", () => {
       const r = truncateHistory(big, 50000);
       expect(JSON.stringify(r).length).toBeLessThanOrEqual(50000);
       if (r.length > 0) expect(r[0].userInputMessage).toBeDefined();
+    });
+
+    it("does not wipe history when truncation leaves a leading toolResult entry (issue #24)", () => {
+      // Simulate the issue: large history where, after truncation, the first
+      // remaining entry is a tool-result userInputMessage. Previously this
+      // caused sanitizeHistory to return [] and wiped the entire context.
+      const toolUse = { name: "bash", toolUseId: "tc1", input: {} };
+      const toolResult = [{ toolUseId: "tc1", content: [{ text: "output" }], status: "success" as const }];
+      // Build a big history so that truncation drops the leading user+assistant pair,
+      // leaving the tool-result entry at the front.
+      const bigContent = "x".repeat(50000);
+      const h = [
+        userEntry(`big ${bigContent}`),
+        assistantEntry(`big ${bigContent}`, [toolUse]),
+        userEntry("tool results", toolResult),
+        userEntry("next question"),
+        assistantEntry("answer"),
+      ];
+      const smallLimit = JSON.stringify(h).length - JSON.stringify(h.slice(0, 2)).length - 10;
+      const r = truncateHistory(h, smallLimit);
+      // History should not be empty — the valid tail must be preserved
+      expect(r.length).toBeGreaterThan(0);
+      // First entry must be a valid plain userInputMessage (no toolResults)
+      expect(r[0].userInputMessage).toBeDefined();
+      expect(r[0].userInputMessage?.userInputMessageContext?.toolResults).toBeUndefined();
     });
   });
 
