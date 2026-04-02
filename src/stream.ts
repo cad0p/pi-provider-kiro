@@ -40,6 +40,15 @@ import {
 } from "./transform.js";
 import { TRUNCATION_NOTICE, wasPreviousResponseTruncated } from "./truncation.js";
 
+/** Best-effort cancel: awaits reader.cancel() and silently swallows any error. */
+async function safeCancel(reader: ReadableStreamDefaultReader<Uint8Array>): Promise<void> {
+  try {
+    await reader.cancel();
+  } catch {
+    // ignore cancel errors
+  }
+}
+
 /** Delay that rejects early if the abort signal fires. */
 function abortableDelay(ms: number, signal?: AbortSignal): Promise<void> {
   if (signal?.aborted) return Promise.reject(signal.reason);
@@ -336,7 +345,7 @@ export function streamKiro(
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
             idleCancelled = true;
-            void reader.cancel().catch(() => {});
+            void safeCancel(reader);
           }, IDLE_TIMEOUT);
         };
         let gotFirstToken = false;
@@ -360,7 +369,7 @@ export function streamKiro(
             ]);
             if (result === FIRST_TOKEN_SENTINEL) {
               readPromise.catch(() => {}); // suppress dangling rejection
-              void reader.cancel().catch(() => {});
+              void safeCancel(reader);
               firstTokenTimedOut = true;
               break;
             }
@@ -437,7 +446,7 @@ export function streamKiro(
               // API sent an error mid-stream (throttling, internal error, etc.)
               const errMsg = event.data.message ? `${event.data.error}: ${event.data.message}` : event.data.error;
               streamError = errMsg;
-              void reader.cancel().catch(() => {});
+              void safeCancel(reader);
               break;
             }
             // followupPrompt events are intentionally ignored
