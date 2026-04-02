@@ -58,6 +58,25 @@ describe("Feature 6: History Management", () => {
       expect(sanitizeHistory(h)).toHaveLength(0);
     });
 
+    it("strips leading tool-result entries and preserves subsequent valid history (regression #24)", () => {
+      // Simulates post-truncation state where first entry is a tool-result userInputMessage
+      const toolResultEntry = userEntry("results", [{ toolUseId: "tc1", content: [{ text: "ok" }], status: "success" }]);
+      const h = [toolResultEntry, userEntry("next question"), assistantEntry("answer")];
+      const r = sanitizeHistory(h);
+      // Should NOT return [] — should strip the leading tool-result and keep the rest
+      expect(r.length).toBeGreaterThan(0);
+      expect(r[0].userInputMessage?.userInputMessageContext?.toolResults).toBeUndefined();
+    });
+
+    it("strips leading assistant entry then leading tool-result entry", () => {
+      const toolResultEntry = userEntry("results", [{ toolUseId: "tc1", content: [{ text: "ok" }], status: "success" }]);
+      const h = [assistantEntry("stale"), toolResultEntry, userEntry("hi"), assistantEntry("hello")];
+      const r = sanitizeHistory(h);
+      expect(r.length).toBeGreaterThan(0);
+      expect(r[0].userInputMessage).toBeDefined();
+      expect(r[0].userInputMessage?.userInputMessageContext?.toolResults).toBeUndefined();
+    });
+
     it("ensures first entry is a userInputMessage", () => {
       const h = [assistantEntry("stale"), userEntry("hi")];
       const r = sanitizeHistory(h);

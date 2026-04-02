@@ -15,15 +15,24 @@ export function stripHistoryImages(history: KiroHistoryEntry[]): KiroHistoryEntr
 }
 
 export function sanitizeHistory(history: KiroHistoryEntry[]): KiroHistoryEntry[] {
+  // Strip leading entries that would make the history invalid
+  let start = 0;
+  while (
+    start < history.length &&
+    (!history[start]?.userInputMessage || history[start].userInputMessage?.userInputMessageContext?.toolResults)
+  )
+    start++;
+  const trimmed = history.slice(start);
+
   const result: KiroHistoryEntry[] = [];
-  for (let i = 0; i < history.length; i++) {
-    const m = history[i];
+  for (let i = 0; i < trimmed.length; i++) {
+    const m = trimmed[i];
     if (!m) continue;
     // Skip assistant messages with no content and no tool uses (e.g. from API errors)
     if (m.assistantResponseMessage && !m.assistantResponseMessage.toolUses && !m.assistantResponseMessage.content)
       continue;
     if (m.assistantResponseMessage?.toolUses) {
-      const next = history[i + 1];
+      const next = trimmed[i + 1];
       if (next?.userInputMessage?.userInputMessageContext?.toolResults) result.push(m);
     } else if (m.userInputMessage?.userInputMessageContext?.toolResults) {
       const prev = result[result.length - 1];
@@ -31,10 +40,6 @@ export function sanitizeHistory(history: KiroHistoryEntry[]): KiroHistoryEntry[]
     } else {
       result.push(m);
     }
-  }
-  if (result.length > 0) {
-    const first = result[0];
-    if (!first?.userInputMessage || first.userInputMessage.userInputMessageContext?.toolResults) return [];
   }
   return result;
 }
