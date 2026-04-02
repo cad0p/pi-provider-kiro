@@ -70,6 +70,14 @@ interface KiroToolCallState {
   input: string;
 }
 
+async function ignoreRejection<T>(promise: Promise<T>): Promise<void> {
+  try {
+    await promise;
+  } catch {
+    // intentionally ignored
+  }
+}
+
 function emitToolCall(
   state: KiroToolCallState,
   output: AssistantMessage,
@@ -336,7 +344,7 @@ export function streamKiro(
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
             idleCancelled = true;
-            void reader.cancel().catch(() => {});
+            void ignoreRejection(reader.cancel());
           }, IDLE_TIMEOUT);
         };
         let gotFirstToken = false;
@@ -359,8 +367,9 @@ export function streamKiro(
               ),
             ]);
             if (result === FIRST_TOKEN_SENTINEL) {
-              readPromise.catch(() => {}); // suppress dangling rejection
-              void reader.cancel().catch(() => {});
+              // suppress dangling rejection
+              void ignoreRejection(readPromise);
+              void ignoreRejection(reader.cancel());
               firstTokenTimedOut = true;
               break;
             }
@@ -437,7 +446,7 @@ export function streamKiro(
               // API sent an error mid-stream (throttling, internal error, etc.)
               const errMsg = event.data.message ? `${event.data.error}: ${event.data.message}` : event.data.error;
               streamError = errMsg;
-              void reader.cancel().catch(() => {});
+              void ignoreRejection(reader.cancel());
               break;
             }
             // followupPrompt events are intentionally ignored
