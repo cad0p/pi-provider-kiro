@@ -332,11 +332,25 @@ export function streamKiro(
         let currentToolCall: KiroToolCallState | null = null;
         const IDLE_TIMEOUT = 300_000;
         let idleTimer: ReturnType<typeof setTimeout> | null = null;
+        const cancelReaderSafely = async () => {
+          try {
+            await reader.cancel();
+          } catch {
+            // Ignore cancel errors: stream may already be aborted/errored.
+          }
+        };
+        const suppressRejection = async <T>(promise: Promise<T>) => {
+          try {
+            await promise;
+          } catch {
+            // Ignore to avoid unhandled rejection when race timeout wins.
+          }
+        };
         const resetIdle = () => {
           if (idleTimer) clearTimeout(idleTimer);
           idleTimer = setTimeout(() => {
             idleCancelled = true;
-            void reader.cancel().catch(() => {});
+            void cancelReaderSafely();
           }, IDLE_TIMEOUT);
         };
         let gotFirstToken = false;
@@ -359,8 +373,8 @@ export function streamKiro(
               ),
             ]);
             if (result === FIRST_TOKEN_SENTINEL) {
-              readPromise.catch(() => {}); // suppress dangling rejection
-              void reader.cancel().catch(() => {});
+              void suppressRejection(readPromise);
+              void cancelReaderSafely();
               firstTokenTimedOut = true;
               break;
             }
@@ -437,7 +451,7 @@ export function streamKiro(
               // API sent an error mid-stream (throttling, internal error, etc.)
               const errMsg = event.data.message ? `${event.data.error}: ${event.data.message}` : event.data.error;
               streamError = errMsg;
-              void reader.cancel().catch(() => {});
+              void cancelReaderSafely();
               break;
             }
             // followupPrompt events are intentionally ignored
